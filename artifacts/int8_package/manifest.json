@@ -1,0 +1,18 @@
+{
+  "weight_granularity": "per_channel",
+  "quantize_activations": false,
+  "deploy_path": "weight_only_fp_act",
+  "checkpoint_source": "runs/qat_chen_weight_only/best.pt",
+  "act_calib": "ptq_weights",
+  "act_method": "max",
+  "num_classes": 10,
+  "in_channels": 2,
+  "act_scales": {
+    "in": 0.2509062588214874,
+    "conv1": 0.6425247192382812,
+    "conv2": 3.1713263988494873,
+    "conv3": 1.9370590448379517,
+    "conv4": 0.877480685710907
+  },
+  "rounding": "numpy.round (half to even), clip [-128,127]"
+}

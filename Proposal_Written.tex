@@ -1,0 +1,135 @@
+\documentclass[10pt,letterpaper]{article}
+\usepackage[margin=0.85in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{booktabs,tabularx,array}
+\usepackage[colorlinks=true,urlcolor=blue,linkcolor=black]{hyperref}
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
+\titlespacing*{\section}{0pt}{10pt}{4pt}
+\titlespacing*{\subsection}{0pt}{6pt}{2pt}
+\setlist{nosep,leftmargin=1.4em}
+\setlength{\parskip}{3pt}
+\setlength{\parindent}{0pt}
+\renewcommand{\arraystretch}{1.15}
+
+\begin{document}
+\begin{center}
+{\Large\bfseries Quantized SAR Target Recognition:\\From PyTorch to a Hand-Written INT8 C++ Inference Engine}\\[4pt]
+CSE36501 Deep Learning, Fall 2026, UNIST \quad|\quad Project Proposal (Stage 1: Steps 1--2)\\[2pt]
+Team: Muryeol Choi (20201373) / Hyunseok Lim (20211281) / Sung woo Lee (20221447)\quad|\quad November 6, 2026
+\end{center}
+
+\section{Problem Definition}
+\subsection{Problem statement}
+Synthetic Aperture Radar (SAR) images ground vehicles in all weather and at night, but the images are hard to interpret: they contain speckle noise and change strongly with viewing angle. Automatic Target Recognition (ATR) from SAR is therefore a classic application of deep learning. In practice, such classifiers must run on resource-constrained platforms (for example, UAV payloads or seekers), where model size, latency, and predictable behavior matter as much as accuracy. We study how far a compact SAR target classifier can be compressed by 8-bit integer quantization, and we build the integer inference path ourselves in C++ without any deep learning framework.
+
+\subsection{Research questions}
+\begin{itemize}
+\item \textbf{RQ1 (accuracy):} How much accuracy is lost when a compact CNN is quantized to INT8, and does quantization-aware training (QAT) help compared with post-training quantization (PTQ)?
+\item \textbf{RQ2 (efficiency and correctness):} What latency and memory do we gain with a framework-free C++ INT8 engine, and can it be made bit-exact with a Python integer reference?
+\item \textbf{RQ3 (evaluation validity):} How much do common evaluation pitfalls (aspect-angle leakage between train and test, class cues in chip size) change the reported accuracy?
+\end{itemize}
+
+\subsection{Relevance and why deep learning}
+\begin{itemize}
+\item Hand-crafted SAR features are brittle under noise and angle changes, while CNNs learn discriminative features directly from the image chips.
+\item Deployment on embedded hardware needs small, integer-only models; understanding the accuracy/efficiency trade-off and verifying numerical correctness are practical engineering questions.
+\item Showing how evaluation choices inflate accuracy supports the course goal of reasoning about why approaches succeed or fail.
+\end{itemize}
+
+\section{Dataset}
+\subsection{Source and structure}
+We use the public MSTAR (Moving and Stationary Target Acquisition and Recognition) data released through the Air Force Research Laboratory Sensor Data Management System (SDMS) \cite{sdms}. It contains X-band SAR chips of ground vehicles. We follow the standard operating condition (SOC) protocol: train on chips collected at a $17^\circ$ depression angle and test on chips at $15^\circ$, using the same vehicle serial numbers in both sets.
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+\toprule
+Item & Plan \\
+\midrule
+Classes (10) & 2S1, BMP2, BRDM2, BTR60, BTR70, D7, T62, T72, ZIL131, ZSU234 \\
+Train / test & $17^\circ$ / $15^\circ$ depression angle; about 2,747 / 2,426 chips as commonly reported (exact counts to be verified after parsing) \\
+Serial numbers (SOC) & BMP2 sn\_9563, BTR70 sn\_c71, T72 sn\_132 (variants excluded) \\
+Input & Magnitude image, center-cropped to a fixed size (e.g., 64$\times$64 or 88$\times$88) \\
+Source files & SDMS public releases: Target Chips (T72, BMP2, BTR70, SLICY) and Mixed Targets CD1/CD2 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Why this dataset is appropriate}
+\begin{itemize}
+\item It is the standard SAR ATR benchmark \cite{keydel,chen}, so our results can be compared with prior work.
+\item It is small (about 2.7k training chips), so models train quickly and the full pipeline can be repeated with multiple random seeds.
+\item Small chips and compact models suit an embedded-inference study.
+\end{itemize}
+
+\subsection{Pitfalls found in a public copy, and our protocol}
+Before committing to the official release, we inspected a public Kaggle copy of MSTAR and found that it is not the standard SOC setting:
+\begin{itemize}
+\item It is a 7-class detection-format copy (YOLO labels) with 1,655 training and 183 test images; BMP2, BTR70, and T72 are missing.
+\item Per-class totals equal the commonly reported $15^\circ$ test counts (274 per class, 273 for T62, 195 for BTR60), which suggests that it contains only $15^\circ$ data and no $17^\circ$ training set.
+\item Test chips have file numbers within 1--2 of training chips of the same class, which suggests a random split. Under the assumption that file numbering follows acquisition order, nearly identical viewing angles appear in both sets and accuracy would be inflated.
+\item Chip size is nearly constant within a class and differs between classes (for example, 128$\times$128 for BTR60, 192$\times$193 for ZIL131), so a model could use size instead of the target.
+\end{itemize}
+\textbf{Our protocol.} (a) Build the 10-class SOC set from the official SDMS files and check the counts against the numbers above. (b) Crop all chips around the target to one fixed size to remove the size cue. (c) Report the official $17^\circ/15^\circ$ result, and additionally compare it with a random split and a block (contiguous-index) split to quantify leakage. The Kaggle copy is used only for early pipeline development.
+
+\section{Planned Approach (overview)}
+\begin{itemize}
+\item \textbf{Baseline:} compact CNN in PyTorch trained on GPU (A-ConvNets-style \cite{chen}, convolution-only, no large fully connected layers), with multiple random seeds.
+\item \textbf{Quantization:} INT8 PTQ and QAT using our own fake-quantization (straight-through estimator) \cite{jacob}; ablations on per-tensor vs.\ per-channel scales.
+\item \textbf{Integer reference and C++ engine:} a NumPy integer reference defines the exact arithmetic (integer accumulation, fixed-point requantization, one rounding rule). The C++ engine (convolution, pooling, ReLU, classifier) uses static memory and is checked layer by layer for bit-exactness.
+\item \textbf{Optional:} a small vision transformer in PyTorch only, to compare quantization sensitivity (softmax and LayerNorm) with the CNN.
+\end{itemize}
+
+\section{Evaluation Plan}
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+\toprule
+Aspect & Measure \\
+\midrule
+Accuracy & Top-1 accuracy and confusion matrix (mean and std over several seeds), FP32 vs.\ PTQ vs.\ QAT \\
+Correctness & Fraction of test samples with bit-identical logits between the C++ engine and the Python integer reference \\
+Efficiency & Latency (mean and worst case, batch size 1), model size, and peak memory; CPU INT8 engine vs.\ PyTorch FP32 (CPU and GPU) \\
+Validity analysis & Official split vs.\ random/block split; with vs.\ without chip-size cue; sensitivity of each layer to quantization \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Timeline, Risks, and Team Roles}
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+\toprule
+Period & Milestone \\
+\midrule
+Nov 6 & Proposal submission (slides and 5-minute video) \\
+Nov 7 -- Nov 14 & Download and parse MSTAR, build the SOC split, verify counts, FP32 baseline \\
+Nov 15 -- Nov 28 & QAT/PTQ, NumPy integer reference, C++ engine v1, bit-exact check \\
+Nov 29 -- Dec 6 & Optimization, benchmarks, split and size-cue experiments, optional ViT comparison \\
+Dec 7 -- Dec 13 & Final slides, 15-minute video, README, and source code (due Dec 13) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+\begin{itemize}
+\item \textbf{Raw MSTAR parsing:} files use a native header-plus-binary format; mitigation: develop on the Kaggle copy first and write a parser with count checks.
+\item \textbf{Bit-exactness:} rounding mismatches; mitigation: a single documented rounding rule and layer-wise tensor dumps.
+\item \textbf{Schedule:} if the engine is late, drop the optional SIMD and ViT parts.
+\end{itemize}
+\textbf{Team roles} (all members contribute to experiments and the final report):
+\begin{itemize}
+\item Muryeol Choi: quantization lead (PTQ/QAT, fake-quantization, per-tensor vs.\ per-channel ablations), NumPy integer reference, optional ViT quantization comparison.
+\item Hyunseok Lim: MSTAR parsing, SOC split, PyTorch FP32 baseline, validity analysis (split and size-cue experiments).
+\item Sung woo Lee: C++ INT8 engine, bit-exactness check, latency and memory benchmarks.
+\end{itemize}
+
+\begin{thebibliography}{9}\small
+\bibitem{sdms} AFRL Sensor Data Management System, MSTAR public data products, \url{https://www.sdms.afrl.af.mil}.
+\bibitem{keydel} T. Keydel, W. Lee, and J. Moore, ``MSTAR extended operating conditions: a tutorial,'' Proc.\ SPIE 2757, 1996.
+\bibitem{chen} S. Chen, H. Wang, F. Xu, and Y.-Q. Jin, ``Target classification using the deep convolutional networks for SAR images,'' IEEE Trans.\ Geosci.\ Remote Sens., vol.\ 54, no.\ 8, 2016.
+\bibitem{jacob} B. Jacob et al., ``Quantization and training of neural networks for efficient integer-arithmetic-only inference,'' CVPR, 2018.
+\end{thebibliography}
+\end{document}

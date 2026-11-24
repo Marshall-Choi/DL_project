@@ -1,0 +1,107 @@
+{
+  "fp32_test_acc": 0.9863917525773196,
+  "ptq_rows": [
+    {
+      "name": "max_tensor",
+      "test_acc": 0.7571134020618556,
+      "drop_pp": 22.927835051546396
+    },
+    {
+      "name": "max_ch",
+      "test_acc": 0.8771134020618556,
+      "drop_pp": 10.927835051546397
+    },
+    {
+      "name": "max_inputch",
+      "test_acc": 0.7562886597938144,
+      "drop_pp": 23.010309278350515
+    },
+    {
+      "name": "p99_tensor",
+      "test_acc": 0.6305154639175258,
+      "drop_pp": 35.58762886597938
+    },
+    {
+      "name": "p99_ch",
+      "test_acc": 0.8441237113402061,
+      "drop_pp": 14.226804123711345
+    },
+    {
+      "name": "p99_inputch",
+      "test_acc": 0.6309278350515464,
+      "drop_pp": 35.54639175257732
+    },
+    {
+      "name": "p995_tensor",
+      "test_acc": 0.8049484536082474,
+      "drop_pp": 18.14432989690722
+    },
+    {
+      "name": "p995_ch",
+      "test_acc": 0.954639175257732,
+      "drop_pp": 3.1752577319587583
+    },
+    {
+      "name": "p995_inputch",
+      "test_acc": 0.8404123711340206,
+      "drop_pp": 14.597938144329902
+    },
+    {
+      "name": "p999_tensor",
+      "test_acc": 0.965360824742268,
+      "drop_pp": 2.103092783505156
+    },
+    {
+      "name": "p999_ch",
+      "test_acc": 0.9872164948453608,
+      "drop_pp": -0.08247422680411898
+    },
+    {
+      "name": "p999_inputch",
+      "test_acc": 0.979381443298969,
+      "drop_pp": 0.7010309278350557
+    }
+  ],
+  "best_ptq": {
+    "name": "p999_ch",
+    "test_acc": 0.9872164948453608,
+    "method": "p999",
+    "per_channel": true,
+    "input_only": false
+  },
+  "qat_best_test_acc": null,
+  "qat_best_epoch": null,
+  "qat_checkpoint": null,
+  "scale_shapes": {
+    "in": [
+      1,
+      2,
+      1,
+      1
+    ],
+    "conv1": [
+      1,
+      16,
+      1,
+      1
+    ],
+    "conv2": [
+      1,
+      32,
+      1,
+      1
+    ],
+    "conv3": [
+      1,
+      64,
+      1,
+      1
+    ],
+    "conv4": [
+      1,
+      128,
+      1,
+      1
+    ]
+  }
+}

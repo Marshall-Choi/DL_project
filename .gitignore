@@ -1,0 +1,17 @@
+data/
+processed/
+runs/
+.conda/
+.venv/
+.cursor/
+.claude/
+__pycache__/
+*.pyc
+*.zip
+.DS_Store
+
+engine/build/aconvnet_int8
+
+# Team handoff: track artifacts/ (models, int8, scales, reports)
+!artifacts/
+!artifacts/**
