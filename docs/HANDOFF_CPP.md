@@ -4,6 +4,8 @@
 
 활성 눈금은 `artifacts/act_scales/full_int8_p999_ch.pt`다. `int8_package/manifest.json`의 `act_scales`는 최댓값 방식이라 쓰지 않는다.
 
+팀 전체 역할·RQ3 논리: `docs/TEAM_GUIDE.md`
+
 ## Canonical artifacts
 
 | Path | Contents |
